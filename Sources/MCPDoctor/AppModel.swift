@@ -4,7 +4,8 @@ import Observation
 
 enum SignInState: Equatable {
     case running(link: URL?)
-    case failed(String)
+    /// A one-line summary, plus everything the command printed.
+    case failed(String, output: String = "")
 }
 
 /// One harness's servers, split the way the panel shows them.
@@ -122,11 +123,14 @@ final class AppModel {
                 return
             }
             let env = await doctor.environment()
+            let command = invocation.background
             let result = await CommandRunner.run(
-                invocation.executable,
-                arguments: invocation.arguments,
+                command.executable,
+                arguments: command.arguments,
                 environment: env.variables,
                 workingDirectory: invocation.workingDirectory,
+                input: invocation.needsTerminal ? Data() : nil,
+                keepInputOpen: invocation.needsTerminal,
                 timeout: Self.signInTimeout,
                 qualityOfService: .userInitiated,
                 onOutput: { chunk in
@@ -146,7 +150,7 @@ final class AppModel {
                     result.failureSummary,
                     harness: server.harness,
                     action: "sign in to MCP servers from the command line"
-                ))
+                ), output: result.fullOutput)
             }
         }
     }
@@ -205,8 +209,9 @@ final class AppModel {
         return url
     }
 
+    /// Stops at control characters, which end a link inside terminal escape sequences.
     nonisolated static func firstLink(in chunk: Data) -> URL? {
         let text = String(decoding: chunk, as: UTF8.self)
-        return text.firstMatch(of: #/https?://[^\s"'<>]+/#).flatMap { URL(string: String($0.output)) }
+        return text.firstMatch(of: #/https?://[^\s"'<>\x00-\x1F\x7F]+/#).flatMap { URL(string: String($0.output)) }
     }
 }

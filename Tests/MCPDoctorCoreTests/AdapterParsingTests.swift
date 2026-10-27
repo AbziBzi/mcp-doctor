@@ -72,6 +72,13 @@ import Testing
     }
 }
 
+@Suite struct CommandOutputTests {
+    @Test func stripsColorsAndHyperlinks() {
+        let text = "\u{1B}[1mOpen\u{1B}[0m \u{1B}]8;;https://example.com/auth\u{1B}\\https://example.com/auth\u{1B}]8;;\u{1B}\\\r\nnext"
+        #expect(CommandOutput.lines(text) == ["Open https://example.com/auth", "next"])
+    }
+}
+
 @Suite struct CodexParsingTests {
     @Test func parsesConfigList() throws {
         let json = """

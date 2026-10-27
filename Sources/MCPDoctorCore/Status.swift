@@ -123,10 +123,15 @@ public enum StatusMerger {
     private static func apply(_ signal: LocalSignal, to server: inout MCPServer, checkedAt: Date?, now: Date) {
         switch signal {
         case .needsAuth(let since):
-            if checkedAt.map({ since > $0 }) ?? true {
-                server.status = .needsAuth
-                server.detail = "\(server.harness.displayName) reported that it needs sign-in"
-            }
+            // The harness keeps this flag until the user signs in again, and its sessions skip the
+            // server while it's set, even when a CLI check with the stored token still connects.
+            // Organisations provision many claude.ai connectors that get flagged without being used,
+            // so for those the flag only counts when it's newer than the last check.
+            if server.transport == .connector, let checkedAt, since <= checkedAt { return }
+            server.detail = server.status == .ok
+                ? "\(server.harness.displayName) sessions skip it until you sign in again"
+                : "\(server.harness.displayName) reported that it needs sign-in"
+            server.status = .needsAuth
         case .token(let expiresAt, let hasRefreshToken):
             guard let expiresAt, !hasRefreshToken else { return }
             if expiresAt <= now {

@@ -36,7 +36,7 @@ struct ServerRow: View {
                         .lineLimit(2)
                 }
             }
-            .help(server.detail ?? server.status.label)
+            .help(helpText)
             Spacer(minLength: 6)
             trailing
         }
@@ -48,11 +48,17 @@ struct ServerRow: View {
 
     private var signIn: SignInState? { model.signIns[server.id] }
 
+    /// A failed sign-in shows everything the command printed.
+    private var helpText: String {
+        if case .failed(let message, let output) = signIn { return output.isEmpty ? message : output }
+        return server.detail ?? server.status.label
+    }
+
     /// Healthy servers get a single line.
     private var subtitle: String? {
         switch signIn {
         case .running: return "Waiting for you to finish in the browser…"
-        case .failed(let message): return "Sign-in failed: \(message)"
+        case .failed(let message, _): return "Sign-in failed: \(message)"
         case nil: break
         }
         if case .expiringSoon(let date) = server.status {
@@ -102,7 +108,11 @@ struct ServerRow: View {
             Button("Copy Sign-In Command") { model.copySignInCommand(server) }
             Divider()
         }
-        if case .failed = signIn {
+        if case .failed(let message, let output) = signIn {
+            Button("Copy Error") {
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(output.isEmpty ? message : output, forType: .string)
+            }
             Button("Dismiss Error") { model.dismissSignInError(server) }
         }
         Button(model.isMuted(server) ? "Unmute" : "Mute") { model.toggleMute(server) }

@@ -65,6 +65,13 @@ public struct ClaudeCodeAdapter: HarnessAdapter {
         try await listCheck(env: env, extraEnvironment: Self.checkEnvironment, timeout: 120, parse: Self.parseList)
     }
 
+    /// `claude mcp login` cancels an OAuth sign-in as soon as it starts waiting for the browser if
+    /// stdin isn't a terminal, after it has already cleared the stored token.
+    public func signInInvocation(for server: MCPServer, env: ShellEnvironment) -> Invocation? {
+        guard server.canSignIn, let executable = env.executable(named: harness.executableName) else { return nil }
+        return Invocation(executable: executable, arguments: ["mcp", "login", server.name], workingDirectory: home, needsTerminal: true)
+    }
+
     // MARK: - Parsing
 
     /// Lines look like `name: target - ✔ Connected`. Names can contain `:`, and failure details can

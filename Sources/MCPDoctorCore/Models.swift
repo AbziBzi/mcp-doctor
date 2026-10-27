@@ -155,11 +155,21 @@ public struct Invocation: Sendable, Equatable {
     public var executable: URL
     public var arguments: [String]
     public var workingDirectory: URL
+    /// The CLI gives up when stdin isn't a terminal, so background runs go through a pseudo-terminal.
+    public var needsTerminal: Bool
 
-    public init(executable: URL, arguments: [String], workingDirectory: URL) {
+    public init(executable: URL, arguments: [String], workingDirectory: URL, needsTerminal: Bool = false) {
         self.executable = executable
         self.arguments = arguments
         self.workingDirectory = workingDirectory
+        self.needsTerminal = needsTerminal
+    }
+
+    /// What to run without a terminal. `script` gives the CLI a pseudo-terminal; its own stdin must
+    /// stay open, because at end of input it sends ^D, which cancels the CLI's prompt.
+    public var background: (executable: URL, arguments: [String]) {
+        guard needsTerminal else { return (executable, arguments) }
+        return (URL(fileURLWithPath: "/usr/bin/script"), ["-q", "/dev/null", executable.path] + arguments)
     }
 
     public var shellCommand: String {

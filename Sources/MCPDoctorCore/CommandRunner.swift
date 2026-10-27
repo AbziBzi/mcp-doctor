@@ -12,14 +12,24 @@ public struct CommandResult: Sendable {
     public var errorOutput: String { String(decoding: stderr, as: UTF8.self) }
     public var succeeded: Bool { launchError == nil && !timedOut && exitStatus == 0 }
 
-    /// The most useful one-line explanation of a failure.
+    /// The most useful one-line explanation of a failure. Lines tagged like `[mcp-sdk] …` are
+    /// diagnostics printed along the way, so the last untagged line wins.
     public var failureSummary: String {
         if let launchError { return launchError }
         if timedOut { return "Timed out" }
-        let text = [errorOutput, output]
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty }
-        return text?.split(separator: "\n").last.map(String.init) ?? "Exited with status \(exitStatus)"
+        let streams = [errorOutput, output].map(CommandOutput.lines).filter { !$0.isEmpty }
+        let isDiagnostic = { (line: String) in line.hasPrefix("[") }
+        return streams.lazy.compactMap { $0.last { !isDiagnostic($0) } }.first
+            ?? streams.first?.last
+            ?? "Exited with status \(exitStatus)"
+    }
+
+    /// Everything the command printed, without terminal escape codes, for showing or copying.
+    public var fullOutput: String {
+        var lines = CommandOutput.lines(output) + CommandOutput.lines(errorOutput)
+        if let launchError { lines.append(launchError) }
+        if timedOut { lines.append("Timed out") }
+        return lines.joined(separator: "\n")
     }
 }
 

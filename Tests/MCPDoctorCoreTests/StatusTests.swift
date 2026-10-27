@@ -20,12 +20,23 @@ import Testing
         #expect(server.canSignIn)
     }
 
-    @Test func newerNeedsAuthSignalWins() {
+    @Test func needsAuthSignalWinsOverConnectedCheck() {
         let check = DeepCheck(servers: [CheckedServer(name: "x", transport: .http, status: .ok, canSignIn: true)], startedAt: now)
         let older = StatusMerger.merge(harness: .claudeCode, configured: [], check: check,
                                        signals: ["x": [.needsAuth(since: now - 60)]], now: now)
         let newer = StatusMerger.merge(harness: .claudeCode, configured: [], check: check,
                                        signals: ["x": [.needsAuth(since: now + 60)]], now: now + 120)
+        #expect(older.first?.status == .needsAuth)
+        #expect(older.first?.detail == "Claude Code sessions skip it until you sign in again")
+        #expect(newer.first?.status == .needsAuth)
+    }
+
+    @Test func connectorsIgnoreFlagsOlderThanTheCheck() {
+        let check = DeepCheck(servers: [CheckedServer(name: "claude.ai Docs", transport: .connector, status: .ok, canSignIn: true)], startedAt: now)
+        let older = StatusMerger.merge(harness: .claudeCode, configured: [], check: check,
+                                       signals: ["claude.ai Docs": [.needsAuth(since: now - 60)]], now: now)
+        let newer = StatusMerger.merge(harness: .claudeCode, configured: [], check: check,
+                                       signals: ["claude.ai Docs": [.needsAuth(since: now + 60)]], now: now + 120)
         #expect(older.first?.status == .ok)
         #expect(newer.first?.status == .needsAuth)
     }

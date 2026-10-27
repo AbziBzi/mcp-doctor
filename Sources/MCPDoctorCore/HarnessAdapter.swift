@@ -141,7 +141,8 @@ enum ListOutput {
 }
 
 enum CommandOutput {
-    static var ansiEscape: Regex<Substring> { #/\u{1B}\[[0-9;?]*[A-Za-z]/# }
+    /// CSI sequences (colors, cursor movement) and OSC sequences (titles, hyperlinks).
+    static var ansiEscape: Regex<Substring> { #/\u{1B}\[[0-9;?]*[A-Za-z]|\u{1B}\][^\u{07}\u{1B}]*(?:\u{07}|\u{1B}\\)/# }
 
     /// Non-empty, trimmed lines without terminal escape codes.
     static func lines(_ text: String) -> [String] {
