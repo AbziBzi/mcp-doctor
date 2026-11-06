@@ -2,18 +2,18 @@
 
 # MCP Doctor
 
-A macOS menu bar app that tells you when an MCP server in Claude Code, Codex or Cursor needs you
-to sign in again, before an agent finds out halfway through a thread. It lets you sign in from the
-menu bar.
+A macOS menu bar app that tells you when an MCP server in Claude Code, Codex, Cursor or Pi needs
+you to sign in again, before an agent finds out halfway through a thread. It lets you sign in from
+the menu bar.
 
 - The icon turns orange and shows a count when something needs attention.
-- The panel always lists Claude Code, Codex and Cursor, so you can tell "all good" from "not
+- The panel always lists Claude Code, Codex, Cursor and Pi, so you can tell "all good" from "not
   checked". Problems come first with a **Sign in** button; a summary row such as "All 21 servers
   connected" expands to show the rest.
 - Organisation-provisioned claude.ai connectors that have never worked on this Mac are collapsed
   and don't count. Any server can be muted from its context menu.
 
-<p align="center"><img src="docs/screenshot.png" width="478" alt="The MCP Doctor panel: Claude Code all connected, one Codex and one Cursor server needing sign-in"></p>
+<p align="center"><img src="docs/screenshot.png" width="478" alt="The MCP Doctor panel: Claude Code and Pi all connected, one Codex and one Cursor server needing sign-in"></p>
 
 ## Requirements
 
@@ -26,6 +26,7 @@ menu bar.
 | Claude Code | 2.1.310 | `claude mcp list` and `claude mcp login` |
 | Codex CLI | 0.164.0 | `codex app-server` with `mcpServerStatus/list`, and `codex mcp login` |
 | Cursor CLI (`cursor-agent`) | 2026.10.19 | `cursor-agent mcp list` and `cursor-agent mcp login` |
+| Pi (`pi`, `@earendil-works/pi-coding-agent`) | 1.5.0 | `pi mcp list --json` and `pi mcp login` |
 
 Older versions may lack some of these. When that happens, the panel says which harness to update
 instead of showing a raw error.
@@ -53,9 +54,10 @@ model, so it uses none of your plan's usage.
 | Claude Code | `claude mcp list` (~6 s) | watches `~/.claude.json` and `~/.claude/mcp-needs-auth-cache.json`; reads token expiry from the `Claude Code-credentials` Keychain item | `claude mcp login <name>` |
 | Codex | `codex app-server` → `mcpServerStatus/list` (~2 s) | watches `~/.codex/config.toml` | `codex mcp login <name>` |
 | Cursor | `cursor-agent mcp list` (~2.5 s), run from your home folder | watches `~/.cursor/mcp.json` and the token file | `cursor-agent mcp login <name>` |
+| Pi | `pi mcp list --json` (~3 s) | watches `~/.pi/agent/mcp.json` and `mcp-auth.json` (or the folder in `PI_CODING_AGENT_DIR`) | `pi mcp login <name>`, which finishes in the browser |
 
-Checks run one at a time at background priority: Codex every 10 minutes, Cursor and Claude Code
-every 15. Claude Code's check runs with larger connection batches
+Checks run one at a time at background priority: Codex every 10 minutes, Cursor, Pi and Claude
+Code every 15. Claude Code's check runs with larger connection batches
 (`MCP_SERVER_CONNECTION_BATCH_SIZE`), which cuts it from ~24 s to ~6 s with ~60 servers. Checks
 also run after wake, when the network comes back, and when you open the panel with stale data.
 Config changes are picked up within seconds. Checks pause while offline, and intervals double in
@@ -78,13 +80,14 @@ Terminal**.
 ## Known limitations
 
 - **Only servers available everywhere are checked.** Checks run from your home folder, so servers
-  configured for a single project (a repo's `.mcp.json` or `.cursor/mcp.json`, or Claude Code's
-  per-project servers) aren't listed.
+  configured for a single project (a repo's `.mcp.json`, `.cursor/mcp.json` or `.pi/mcp.json`,
+  or Claude Code's per-project servers) aren't listed. Pi servers that an extension registers for
+  one session aren't listed either.
 - **Cursor answers differently per folder.** In folders where `cursor-agent` has never run, it
   reports OAuth servers as needing sign-in even when your saved login works. MCP Doctor checks from
   your home folder.
 - **Claude Code and Cursor are read from their text output.** A new version that changes the
-  format will show "Couldn't read the output" until the parser is updated. Codex returns JSON.
+  format will show "Couldn't read the output" until the parser is updated. Codex and Pi return JSON.
 - **Some servers don't issue refresh tokens.** Their sign-in lasts as long as one access token, so
   they will keep coming back. That needs fixing on the server.
 

@@ -4,12 +4,14 @@ public enum Harness: String, CaseIterable, Sendable {
     case claudeCode = "claude-code"
     case codex
     case cursor
+    case pi
 
     public var displayName: String {
         switch self {
         case .claudeCode: "Claude Code"
         case .codex: "Codex"
         case .cursor: "Cursor"
+        case .pi: "Pi"
         }
     }
 
@@ -18,6 +20,7 @@ public enum Harness: String, CaseIterable, Sendable {
         case .claudeCode: "claude"
         case .codex: "codex"
         case .cursor: "cursor-agent"
+        case .pi: "pi"
         }
     }
 
@@ -27,6 +30,7 @@ public enum Harness: String, CaseIterable, Sendable {
         case .claudeCode: "2.1.310"
         case .codex: "0.164.0"
         case .cursor: "2026.10.19"
+        case .pi: "1.5.0"
         }
     }
 }

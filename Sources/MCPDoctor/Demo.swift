@@ -39,6 +39,9 @@ extension Doctor {
                 DemoAdapter(harness: .cursor, servers: [
                     .http("notion", status: .needsAuth), .http("github"), .stdio("figma"),
                 ]),
+                DemoAdapter(harness: .pi, servers: [
+                    .http("github"), .http("sentry"), .stdio("playwright"),
+                ]),
             ],
             environment: ShellEnvironment(variables: [:])
         )

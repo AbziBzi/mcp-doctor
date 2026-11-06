@@ -149,3 +149,122 @@ import Testing
         #expect(adapter.authFileURL.path == "/Users/jane.doe/.cursor/projects/Users-jane-doe/mcp-auth.json")
     }
 }
+
+@Suite struct PiParsingTests {
+    @Test func parsesList() throws {
+        let json = """
+        {"servers":[
+          {"name":"assistant","scope":"global","source":"/Users/me/.pi/agent/mcp.json","enabled":true,
+           "exposure":"deferred","transport":"https://assistant.example.com/mcp","state":"needs-auth","tools":[]},
+          {"name":"database","scope":"global","enabled":true,"exposure":"deferred",
+           "transport":"~/.pi/agent/bin/db-mcp.sh","state":"connected","tools":[{"name":"query"}]},
+          {"name":"logs","enabled":true,"transport":"https://logs.example.com/mcp","state":"failed",
+           "tools":[],"error":"MCP HTTP request failed with status 503: no healthy upstream"},
+          {"name":"code","enabled":true,"transport":"https://code.example.com/mcp","state":"connected","tools":[]},
+          {"name":"old","enabled":false,"transport":"npx old-mcp","state":"disconnected","tools":[]}
+        ],"errors":[]}
+        """
+        let list = try #require(PiAdapter.parseList(Data(json.utf8)))
+        let servers = list.servers
+        #expect(servers.map(\.name) == ["assistant", "database", "logs", "code", "old"])
+        #expect(servers.map(\.status) == [.needsAuth, .ok, .failed, .ok, .disabled])
+        #expect(servers.map(\.transport) == [.http, .stdio, .http, .http, .stdio])
+        #expect(servers[1].target == "~/.pi/agent/bin/db-mcp.sh")
+        #expect(servers[2].detail == "MCP HTTP request failed with status 503: no healthy upstream")
+        #expect(servers.map(\.canSignIn) == [true, false, false, false, false])
+        #expect(list.errors.isEmpty)
+    }
+
+    @Test(arguments: [
+        ("connected", nil, ServerStatus.ok),
+        ("needs-auth", nil, .needsAuth),
+        ("failed", "HTTP 401 Unauthorized", .needsAuth),
+        ("failed", "spawn ENOENT", .failed),
+        ("connecting", nil, .unknown),
+        ("closed", nil, .unknown),
+    ])
+    func parsesState(state: String, error: String?, expected: ServerStatus) {
+        let entry = PiAdapter.ListResponse.Entry(name: "x", enabled: true, transport: nil, state: state, error: error)
+        #expect(PiAdapter.status(for: entry).0 == expected)
+    }
+
+    @Test func rejectsTextOutput() {
+        #expect(PiAdapter.parseList(Data("error: unknown command 'mcp'\n".utf8)) == nil)
+    }
+
+    @Test func readsConfigAndSkipsHeaderAuth() async throws {
+        let home = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let agent = home.appending(path: ".pi/agent")
+        try FileManager.default.createDirectory(at: agent, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: home) }
+        let config = """
+        {"mcpServers":{
+          "assistant":{"url":"https://assistant.example.com/mcp"},
+          "code":{"url":"https://code.example.com/mcp","headers":{"Authorization":"!echo Bearer $(gh auth token)"}},
+          "database":{"command":"~/.pi/agent/bin/db-mcp.sh","enabled":false}
+        }}
+        """
+        try Data(config.utf8).write(to: agent.appending(path: "mcp.json"))
+        let adapter = PiAdapter(home: home, environment: [:])
+        let servers = await adapter.configuredServers(env: ShellEnvironment(variables: [:]))
+        #expect(servers.map(\.name) == ["assistant", "code", "database"])
+        #expect(servers.map(\.canSignIn) == [true, false, false])
+        #expect(servers.map(\.enabled) == [true, true, false])
+        #expect(servers[2].transport == .stdio)
+    }
+
+    @Test func followsAgentDirectoryOverride() {
+        let home = URL(fileURLWithPath: "/Users/jane.doe")
+        #expect(PiAdapter(home: home, environment: [:]).authFileURL.path == "/Users/jane.doe/.pi/agent/mcp-auth.json")
+        let custom = PiAdapter(home: home, environment: ["PI_CODING_AGENT_DIR": "~/pi-work"])
+        #expect(custom.configURL.path == "/Users/jane.doe/pi-work/mcp.json")
+        let absolute = PiAdapter(home: home, environment: ["PI_CODING_AGENT_DIR": "/opt/pi"])
+        #expect(absolute.signInFiles.map(\.path) == ["/opt/pi/mcp-auth.json"])
+    }
+
+    /// `pi mcp list` exits with status 1 whenever a server isn't connected; the JSON still counts.
+    @Test func deepCheckReadsJSONDespiteFailureStatus() async throws {
+        let bin = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bin) }
+        let script = """
+        #!/bin/sh
+        echo '{"servers":[{"name":"assistant","enabled":true,"transport":"https://a.example.com/mcp","state":"needs-auth","tools":[]}],"errors":[]}'
+        exit 1
+        """
+        FileManager.default.createFile(atPath: bin.appending(path: "pi").path, contents: Data(script.utf8), attributes: [.posixPermissions: 0o755])
+        let adapter = PiAdapter(home: bin, environment: [:])
+        let check = try await adapter.deepCheck(env: ShellEnvironment(variables: ["PATH": bin.path]))
+        #expect(check.servers.map(\.status) == [.needsAuth])
+    }
+
+    @Test func deepCheckExplainsOldVersions() async throws {
+        let bin = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bin) }
+        let script = "#!/bin/sh\necho \"error: unknown command 'mcp'\" >&2\nexit 1\n"
+        FileManager.default.createFile(atPath: bin.appending(path: "pi").path, contents: Data(script.utf8), attributes: [.posixPermissions: 0o755])
+        let adapter = PiAdapter(home: bin, environment: [:])
+        await #expect(throws: AdapterError.self) {
+            try await adapter.deepCheck(env: ShellEnvironment(variables: ["PATH": bin.path]))
+        }
+        let message = Compatibility.explain("error: unknown command 'mcp'", harness: .pi, action: "report MCP server status")
+        #expect(message.contains("Update Pi"))
+    }
+
+    @Test func signsInWithPiMCPLogin() throws {
+        let bin = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: bin) }
+        let pi = bin.appending(path: "pi")
+        FileManager.default.createFile(atPath: pi.path, contents: Data("#!/bin/sh\n".utf8), attributes: [.posixPermissions: 0o755])
+        let home = URL(fileURLWithPath: "/Users/jane.doe")
+        let server = MCPServer(harness: .pi, name: "assistant", transport: .http, status: .needsAuth, canSignIn: true)
+        let invocation = try #require(
+            PiAdapter(home: home, environment: [:]).signInInvocation(for: server, env: ShellEnvironment(variables: ["PATH": bin.path]))
+        )
+        #expect(invocation.arguments == ["mcp", "login", "assistant"])
+        #expect(invocation.workingDirectory == home)
+        #expect(!invocation.needsTerminal)
+    }
+}

@@ -47,6 +47,7 @@ public actor Doctor {
             ClaudeCodeAdapter(home: home),
             CodexAdapter(home: home),
             CursorAdapter(home: home),
+            PiAdapter(home: home),
         ])
     }
 

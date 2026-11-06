@@ -27,6 +27,7 @@ final class Scheduler {
         case .claudeCode: 15 * 60
         case .codex: 10 * 60
         case .cursor: 15 * 60
+        case .pi: 15 * 60
         }
     }
 
